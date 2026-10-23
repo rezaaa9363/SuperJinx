@@ -1,0 +1,103 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: superjinx
+  labels:
+    app.kubernetes.io/name: superjinx
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: superjinx
+  labels:
+    app.kubernetes.io/name: superjinx
+  annotations:
+    ankra.io/generated: "true"
+spec:
+  replicas: 1
+  progressDeadlineSeconds: 600
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: superjinx
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: superjinx
+    spec:
+      serviceAccountName: superjinx
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      imagePullSecrets:
+        - name: ankra-registry-pull
+      containers:
+        - name: superjinx
+          image: registry.ankra.cloud/org-b35ad47d-c01b-40ac-8885-58902b4798cf/superjinx:${{ ankra.image_tag }}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: JINX_LOCATION
+              valueFrom:
+                secretKeyRef:
+                  name: superjinx-env
+                  key: JINX_LOCATION
+                  optional: true
+            - name: RAILWAY_PUBLIC_DOMAIN
+              valueFrom:
+                secretKeyRef:
+                  name: superjinx-env
+                  key: RAILWAY_PUBLIC_DOMAIN
+                  optional: true
+            - name: RAILWAY_REPLICA_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: superjinx-env
+                  key: RAILWAY_REPLICA_REGION
+                  optional: true
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          startupProbe:
+            tcpSocket:
+              port: http
+            failureThreshold: 30
+            periodSeconds: 2
+          livenessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 5
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+      volumes:
+        - name: tmp
+          emptyDir: {}
